@@ -1,1 +1,204 @@
+"""
+Sistema de Tienda en Línea
+Este programa implementa un sistema de comercio electrónico con gestión de
+productos, carritos de compra y órdenes.
 
+Clases principales:
+- Producto: Representa un producto en la tienda
+- CarritoCompra: Gestiona productos seleccionados
+- Orden: Representa una orden de compra
+- Cliente: Representa un cliente de la tienda
+- TiendaOnline: Clase principal que coordina todas las operaciones
+"""
+
+from datetime import datetime
+from typing import List, Dict
+from abc import ABC, abstractmethod
+
+class Producto:
+    def __init__(self, codigo: str, nombre: str, precio: float, stock: int):
+        self._codigo = codigo
+        self._nombre = nombre
+        self._precio = precio
+        self._stock = stock
+        self._categoria = None
+
+    def actualizar_stock(self, cantidad: int) -> bool:
+        if self._stock + cantidad >= 0:
+            self._stock += cantidad
+            return True
+        return False
+
+    def hay_stock(self, cantidad: int) -> bool:
+        return self._stock >= cantidad
+
+    def __str__(self) -> str:
+        return f"{self._nombre} - ${self._precio:.2f} (Stock: {self._stock})"
+
+class ItemCarrito:
+    def __init__(self, producto: Producto, cantidad: int):
+        self._producto = producto
+        self._cantidad = cantidad
+
+    @property
+    def subtotal(self) -> float:
+        return self._producto._precio * self._cantidad
+
+    def __str__(self) -> str:
+        return f"{self._producto._nombre} x{self._cantidad} = ${self.subtotal:.2f}"
+
+class CarritoCompra:
+    def __init__(self):
+        self._items: List[ItemCarrito] = []
+        self._fecha_creacion = datetime.now()
+
+    def agregar_producto(self, producto: Producto, cantidad: int) -> bool:
+        if not producto.hay_stock(cantidad):
+            return False
+            
+        # Buscar si el producto ya está en el carrito
+        for item in self._items:
+            if item._producto._codigo == producto._codigo:
+                nueva_cantidad = item._cantidad + cantidad
+                if producto.hay_stock(nueva_cantidad):
+                    item._cantidad = nueva_cantidad
+                    return True
+                return False
+
+        # Si no está, crear nuevo item
+        self._items.append(ItemCarrito(producto, cantidad))
+        return True
+
+    def remover_producto(self, codigo_producto: str) -> bool:
+        for item in self._items:
+            if item._producto._codigo == codigo_producto:
+                self._items.remove(item)
+                return True
+        return False
+
+    @property
+    def total(self) -> float:
+        return sum(item.subtotal for item in self._items)
+
+    def __str__(self) -> str:
+        resultado = "Carrito de Compras:\n"
+        for item in self._items:
+            resultado += f"- {item}\n"
+        resultado += f"Total: ${self.total:.2f}"
+        return resultado
+
+class Cliente:
+    def __init__(self, nombre: str, email: str, direccion: str):
+        self._nombre = nombre
+        self._email = email
+        self._direccion = direccion
+        self._carrito = CarritoCompra()
+        self._historial_ordenes: List[Orden] = []
+
+    def agregar_al_carrito(self, producto: Producto, cantidad: int) -> bool:
+        return self._carrito.agregar_producto(producto, cantidad)
+
+    def __str__(self) -> str:
+        return f"{self._nombre} ({self._email})"
+
+class Orden:
+    def __init__(self, cliente: Cliente, items: List[ItemCarrito]):
+        self._cliente = cliente
+        self._items = items.copy()
+        self._fecha = datetime.now()
+        self._estado = "Pendiente"
+        self._total = sum(item.subtotal for item in items)
+
+    def procesar(self) -> bool:
+        # Verificar stock y actualizar
+        for item in self._items:
+            if not item._producto.actualizar_stock(-item._cantidad):
+                return False
+        
+        self._estado = "Procesada"
+        return True
+
+    def __str__(self) -> str:
+        resultado = f"Orden de {self._cliente._nombre}\n"
+        resultado += f"Fecha: {self._fecha.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        resultado += "Items:\n"
+        for item in self._items:
+            resultado += f"- {item}\n"
+        resultado += f"Total: ${self._total:.2f}\n"
+        resultado += f"Estado: {self._estado}"
+        return resultado
+
+class TiendaOnline:
+    def __init__(self, nombre: str):
+        self._nombre = nombre
+        self._productos: Dict[str, Producto] = {}
+        self._clientes: List[Cliente] = []
+        self._ordenes: List[Orden] = []
+
+    def agregar_producto(self, producto: Producto) -> None:
+        self._productos[producto._codigo] = producto
+
+    def registrar_cliente(self, cliente: Cliente) -> None:
+        self._clientes.append(cliente)
+
+    def crear_orden(self, cliente: Cliente) -> Orden:
+        if not cliente._carrito._items:
+            raise ValueError("El carrito está vacío")
+
+        orden = Orden(cliente, cliente._carrito._items)
+        if orden.procesar():
+            self._ordenes.append(orden)
+            cliente._historial_ordenes.append(orden)
+            cliente._carrito = CarritoCompra()  # Nuevo carrito vacío
+            return orden
+        raise ValueError("No hay suficiente stock para procesar la orden")
+
+    def mostrar_catalogo(self) -> None:
+        print(f"\nCatálogo de {self._nombre}")
+        for producto in self._productos.values():
+            print(producto)
+
+def main():
+    # Crear tienda
+    tienda = TiendaOnline("Python Shop")
+
+    # Agregar productos
+    productos = [
+        Producto("P001", "Laptop", 999.99, 5),
+        Producto("P002", "Mouse", 29.99, 10),
+        Producto("P003", "Teclado", 49.99, 8)
+    ]
+    for producto in productos:
+        tienda.agregar_producto(producto)
+
+    # Crear cliente
+    cliente = Cliente("Luis Astudillo", "luisrami1509@gmail.com", "Las Brisas")
+    tienda.registrar_cliente(cliente)
+
+    # Mostrar catálogo inicial
+    print("Catálogo inicial:")
+    tienda.mostrar_catalogo()
+
+    # Agregar productos al carrito
+    cliente.agregar_al_carrito(productos[0], 1)  # Laptop
+    cliente.agregar_al_carrito(productos[1], 2)  # Mouse
+
+    # Mostrar carrito
+    print("\nCarrito del cliente:")
+    print(cliente._carrito)
+
+    try:
+        # Crear orden
+        orden = tienda.crear_orden(cliente)
+        print("\nOrden creada:")
+        print(orden)
+
+        # Mostrar catálogo actualizado
+        print("\nCatálogo después de la orden:")
+        tienda.mostrar_catalogo()
+
+    except ValueError as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    main()
